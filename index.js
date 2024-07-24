@@ -51,14 +51,12 @@ bot.on('document', async (ctx) => {
       if (ctx.session.waitingForFile === 'check_id_name') {
         // Логика проверки ID и названия
         const sheetNames = workbook.SheetNames;
-        const logFilePath = path.join(__dirname, 'log.txt');
 
         sheetNames.forEach(sheetName => {
           const sheet = workbook.Sheets[sheetName];
           const data = xlsx.utils.sheet_to_json(sheet, { header: 1 });
 
           let nameIdMap = {};
-          fs.appendFileSync(logFilePath, `\nОбработка листа: ${sheetName}\n`);
 
           for (let i = 1; i < data.length; i++) { // Начинаем с 1, чтобы пропустить заголовок
             const id = data[i][0];
@@ -69,15 +67,11 @@ bot.on('document', async (ctx) => {
               continue;
             }
 
-            fs.appendFileSync(logFilePath, `Обработка строки ${i + 1}: ID = ${id}, Name = ${name}\n`);
-
             if (!nameIdMap[name]) {
               nameIdMap[name] = new Set();
             }
             nameIdMap[name].add(id);
           }
-
-          fs.appendFileSync(logFilePath, `nameIdMap для листа ${sheetName}: ${JSON.stringify(nameIdMap)}\n`);
 
           for (const [name, ids] of Object.entries(nameIdMap)) {
             if (ids.size > 1) {
