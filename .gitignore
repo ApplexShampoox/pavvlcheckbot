@@ -1,18 +1,35 @@
-# Build and Release Folders
-bin-debug/
-bin-release/
-[Oo]bj/
-[Bb]in/
+# Ignore node_modules
+node_modules/
 
-# Other files and folders
-.settings/
+# Ignore environment variables file
+.env
 
-# Executables
-*.swf
-*.air
-*.ipa
-*.apk
+# Ignore session database file
+session_db.json
 
-# Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
-# should NOT be excluded as they contain compiler settings and other important
-# information for Eclipse / Flash Builder.
+# Ignore log files
+*.log
+
+# Ignore temporary files
+*.tmp
+*.temp
+
+# Ignore downloaded files
+*.xlsx
+*.xls
+
+# Ignore result files
+result.txt
+
+# Ignore VSCode settings
+.vscode/
+
+# Ignore MacOS system files
+.DS_Store
+
+# Ignore Windows system files
+Thumbs.db
+
+# Ignore IDE-specific files
+.idea/
+*.iml

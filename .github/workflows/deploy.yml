@@ -1,0 +1,30 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Install SSH client
+        run: sudo apt-get install -y openssh-client
+
+      - name: Deploy code via SSH
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /var/www/pavvlcheckbot
+            git pull origin main
+            echo "BOT_TOKEN=${{ secrets.BOT_TOKEN }}" > /var/www/pavvlcheckbot/.env
+            npm install
+            pm2 restart index.js || pm2 start index.js
