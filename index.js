@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 
-const bot = new Telegraf(process.env.TOKEN);
+const bot = new Telegraf(process.env.BOT_TOKEN);
 
 // Подключаем локальную сессию
 bot.use(new LocalSession({ database: 'session_db.json' }).middleware());
