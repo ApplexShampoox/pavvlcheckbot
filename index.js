@@ -58,7 +58,7 @@ bot.on('document', async (ctx) => {
 
           let nameIdMap = {};
 
-          for (let i = 1; i < data.length; i++) {
+          for (let i = 1; i < data.length; i++) { // Начинаем с 1, чтобы пропустить заголовок
             const id = data[i][0];
             const name = data[i][2];
 
