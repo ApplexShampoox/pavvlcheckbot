@@ -95,7 +95,7 @@ bot.on('document', async (ctx) => {
           return /[а-яА-ЯЁё]/.test(text);
         }
 
-        for (let i = 0; i < data.length; i++) {
+        for (let i = 1; i < data.length; i++) { // Начинаем с 1, чтобы пропустить заголовок
           const row = data[i];
           const cell = row[3]; // Четвёртый столбец (индекс 3)
           if (cell && containsCyrillic(cell.toString())) {
