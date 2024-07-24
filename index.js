@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
+const bot = new Telegraf(process.env.TOKEN);
 
 // Подключаем локальную сессию
 bot.use(new LocalSession({ database: 'session_db.json' }).middleware());
@@ -86,34 +86,28 @@ bot.on('document', async (ctx) => {
         fs.unlinkSync(filePath);
       } else if (ctx.session.waitingForFile === 'check_cyrillic') {
         // Логика проверки кириллических символов
-        const sheetNames = workbook.SheetNames;
+
+        const sheetName = workbook.SheetNames[0]; // Проверяем только первый лист
+        const sheet = workbook.Sheets[sheetName];
+        const data = xlsx.utils.sheet_to_json(sheet, { header: 1 });
 
         function containsCyrillic(text) {
           return /[а-яА-ЯЁё]/.test(text);
         }
 
-        sheetNames.forEach(sheetName => {
-          const sheet = workbook.Sheets[sheetName];
-          const data = xlsx.utils.sheet_to_json(sheet, { header: 1 });
-
-          for (let i = 0; i < data.length; i++) {
-            const row = data[i];
-            const cell = row[3]; // Четвёртый столбец (индекс 3)
-            if (cell && containsCyrillic(cell.toString())) {
-              result.push(`Лист ${sheetName}, строка ${i + 1}: ${cell}`);
-            }
+        for (let i = 0; i < data.length; i++) {
+          const row = data[i];
+          const cell = row[3]; // Четвёртый столбец (индекс 3)
+          if (cell && containsCyrillic(cell.toString())) {
+            result.push(`Лист ${sheetName}, строка ${i + 1}: ${cell}`);
           }
-        });
+        }
 
         const resultMessage = result.length === 0 ?
           'Кириллические символы не найдены в 4-ом столбце.' :
           result.join('\n');
 
-        const filePath = path.join(__dirname, 'result.txt');
-        fs.writeFileSync(filePath, resultMessage);
-
-        await ctx.replyWithDocument({ source: filePath });
-        fs.unlinkSync(filePath);
+        await ctx.reply(resultMessage);
       }
 
       // Ставим состояние ожидания файла обратно для возможности загрузки нового файла
