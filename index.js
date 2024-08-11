@@ -1,38 +1,58 @@
 const { Telegraf, Markup } = require('telegraf');
-const LocalSession = require('telegraf-session-local');
-const xlsx = require('xlsx');
 const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
+const xlsx = require('xlsx');
 require('dotenv').config();
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
+const session = require('./session');
+bot.use(session.middleware());
 
-// Подключаем локальную сессию
-bot.use(new LocalSession({ database: 'session_db.json' }).middleware());
+// Сюда подключать новые функции (импорт из папки actions)
+const { checkIdName } = require('./actions/checkIdName');
+const { checkCyrillic } = require('./actions/checkCyrillic');
+const { checkLongContent } = require('./actions/checkLongContent');
+const { checkDouble } = require('./actions/checkDouble')
 
+//При старте бота добавляем кнопку для вызова каждой функции в формате [Markup.button.callback('Надпись на кнопке','Название импортированной выше функции')]
 bot.start((ctx) => {
   ctx.reply('Выберите действие:', Markup.inlineKeyboard([
-    [Markup.button.callback('Проверка ID и названия', 'check_id_name')],
-    [Markup.button.callback('Проверка кириллических символов', 'check_cyrillic')]
+    [Markup.button.callback('Проверка идентичности ID и названия шаблонов', 'checkIdName')],
+    [Markup.button.callback('Проверка наличия кириллических символов', 'checkCyrillic')],
+    [Markup.button.callback('Проверка на наличие строк > 4096 символов', 'checkLongContent')],
+    [Markup.button.callback('Проверка на наличие дублей услуг', 'checkDouble')]
   ]));
 });
 
-bot.action('check_id_name', (ctx) => {
-  ctx.reply('Пожалуйста, загрузите xlsx файл для проверки ID и названия.');
-  ctx.session.waitingForFile = 'check_id_name';
+//Блок добавления действий бота после нажатия кнопки (сообщение предлагающее пользователю загрузить файл и присвоение ИД этому файлу для определения, для какой функции он был загружен)
+bot.action('checkIdName', (ctx) => {
+  ctx.reply('Загрузите xlsx файл для проверки уникальности ID и названия.');
+  ctx.session.waitingForFile = 'checkIdName';
 });
 
-bot.action('check_cyrillic', (ctx) => {
-  ctx.reply('Пожалуйста, загрузите xlsx файл для проверки кириллических символов.');
-  ctx.session.waitingForFile = 'check_cyrillic';
+bot.action('checkCyrillic', (ctx) => {
+  ctx.reply('Загрузите xlsx файл для проверки наличия кириллических символов.');
+  ctx.session.waitingForFile = 'checkCyrillic';
 });
 
-bot.action('back_to_menu', (ctx) => {
+bot.action('checkLongContent', (ctx) => {
+  ctx.reply('Загрузите xlsx файл для поиска ячеек, в которых больше 4096 символов');
+  ctx.session.waitingForFile = 'checkLongContent';
+});
+
+bot.action('checkDouble', (ctx) => {
+  ctx.reply('Загрузите xlsx файл для поиска дублирующихся услуг');
+  ctx.session.waitingForFile = 'checkDouble';
+});
+
+//Добавление кнопки возврата в меню выбора функции (также при добавлении новой функции сюда нужно добавить кнопку по примеру выше)
+bot.action('backToMenu', (ctx) => {
   ctx.reply('Выберите действие:', Markup.inlineKeyboard([
-    [Markup.button.callback('Проверка ID и названия', 'check_id_name')],
-    [Markup.button.callback('Проверка кириллических символов', 'check_cyrillic')]
+    [Markup.button.callback('Проверка ID и названия', 'checkIdName')],
+    [Markup.button.callback('Проверка кириллических символов', 'checkCyrillic')],
+    [Markup.button.callback('Проверка на строку > 4096', 'checkLongContent')],
+    [Markup.button.callback('Проверка на наличие дублей услуг', 'checkDouble')]
   ]));
+  ctx.session.waitingForFile = false; // Сброс состояния ожидания файла при возврате в меню
 });
 
 bot.on('document', async (ctx) => {
@@ -41,87 +61,42 @@ bot.on('document', async (ctx) => {
     const fileLink = await bot.telegram.getFileLink(fileId);
 
     try {
-      // Скачиваем файл
       const response = await axios.get(fileLink, { responseType: 'arraybuffer' });
       const buffer = Buffer.from(response.data, 'binary');
       const workbook = xlsx.read(buffer, { type: 'buffer' });
 
-      let result = [];
-
-      if (ctx.session.waitingForFile === 'check_id_name') {
-        // Логика проверки ID и названия
-        const sheetNames = workbook.SheetNames;
-
-        sheetNames.forEach(sheetName => {
-          const sheet = workbook.Sheets[sheetName];
-          const data = xlsx.utils.sheet_to_json(sheet, { header: 1 });
-
-          let nameIdMap = {};
-
-          for (let i = 1; i < data.length; i++) { // Начинаем с 1, чтобы пропустить заголовок
-            const id = data[i][0];
-            const name = data[i][2];
-
-            // Пропускаем пустые строки или строки с пробелами
-            if (!id || !name || typeof id !== 'string' || typeof name !== 'string' || id.trim() === '' || name.trim() === '') {
-              continue;
-            }
-
-            if (!nameIdMap[name]) {
-              nameIdMap[name] = new Set();
-            }
-            nameIdMap[name].add(id);
-          }
-
-          for (const [name, ids] of Object.entries(nameIdMap)) {
-            if (ids.size > 1) {
-              result.push(`Несоответствие на листе ${sheetName}: Название "${name}" имеет следующие ID: ${Array.from(ids).join(', ')}`);
-            }
-          }
-        });
-
-        const resultMessage = result.length === 0 ?
-          'Все строки с одинаковыми названиями имеют одинаковые ID.' :
-          result.join('\n');
-
-        const filePath = path.join(__dirname, 'result.txt');
-        fs.writeFileSync(filePath, resultMessage);
-
-        await ctx.replyWithDocument({ source: filePath });
-        fs.unlinkSync(filePath);
-      } else if (ctx.session.waitingForFile === 'check_cyrillic') {
-        // Логика проверки кириллических символов
-
-        const sheetName = workbook.SheetNames[0]; // Проверяем только первый лист
-        const sheet = workbook.Sheets[sheetName];
-        const data = xlsx.utils.sheet_to_json(sheet, { header: 1 });
-
-        function containsCyrillic(text) {
-          return /[а-яА-ЯЁё]/.test(text);
-        }
-
-        for (let i = 1; i < data.length; i++) { // Начинаем с 1, чтобы пропустить заголовок
-          const row = data[i];
-          const cell = row[3]; // Четвёртый столбец (индекс 3)
-          if (cell && containsCyrillic(cell.toString())) {
-            result.push(`Лист ${sheetName}, строка ${i + 1}: ${cell}`);
-          }
-        }
-
-        const resultMessage = result.length === 0 ?
-          'Кириллические символы не найдены в 4-ом столбце.' :
-          result.join('\n');
-
-        await ctx.reply(resultMessage);
+      //Определение системой какую функцию вызывать на основе ИД загруженного пользователем файла
+      switch (ctx.session.waitingForFile) {
+        case 'checkIdName':
+          await checkIdName(ctx, workbook);
+          break;
+        case 'checkCyrillic':
+          await checkCyrillic(ctx, workbook);
+          break;
+        case 'checkLongContent':
+          await checkLongContent(ctx, workbook);
+          break;
+        case 'checkDouble':
+          await checkDouble(ctx, workbook);
+          break;
+        // Добавляйте новые функции здесь
+        default:
+          ctx.reply('Неизвестное действие. Пожалуйста, попробуйте снова.');
+          break;
       }
-
-      // Ставим состояние ожидания файла обратно для возможности загрузки нового файла
-      ctx.session.waitingForFile = false;
-
-      // Отправляем кнопку для возврата в меню
-      ctx.reply('Что вы хотите сделать дальше?', Markup.inlineKeyboard([
-        Markup.button.callback('Вернуться в меню', 'back_to_menu')
+      // Сообщение после обработки файла
+      ctx.reply('Загрузите следующий xlsx файл или вернитесь в меню.', Markup.inlineKeyboard([
+        Markup.button.callback('Вернуться в меню', 'backToMenu')
       ]));
+
+      // Установка состояния ожидания файла для текущей функции
+      ctx.session.waitingForFile = {
+        'checkIdName': 'checkIdName',
+        'checkCyrillic': 'checkCyrillic',
+        'checkLongContent': 'checkLongContent',
+        'checkDouble': 'checkDouble'
+      }[ctx.session.waitingForFile];
+
     } catch (error) {
       console.error('Ошибка при обработке файла:', error);
       ctx.reply('Произошла ошибка при обработке файла. Пожалуйста, попробуйте снова.');
