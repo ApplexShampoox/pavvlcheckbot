@@ -3,11 +3,9 @@
     "archiver": "^7.0.1",
     "axios": "^1.7.2",
     "dotenv": "^16.4.5",
-    "exceljs": "^4.4.0",
     "telegraf": "^4.16.3",
     "telegraf-session-local": "^2.1.1",
     "xlsx": "^0.18.5",
-    "xlsx-js-style": "^1.2.0",
-    "xlsx-style": "^0.8.13"
+    "xlsx-js-style": "^1.2.0"
   }
 }

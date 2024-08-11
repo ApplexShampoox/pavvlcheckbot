@@ -1,7 +1,6 @@
 const fs = require('fs');
 const path = require('path');
 const xlsx = require('xlsx');
-const { Markup } = require('telegraf');
 
 async function checkCyrillic(ctx, workbook) {
   const sheetNames = workbook.SheetNames;
@@ -56,13 +55,6 @@ async function checkCyrillic(ctx, workbook) {
     fs.unlinkSync(filePath);
   }
 
-  // Ожидаем новый файл или возврат в меню
-  await ctx.reply('Загрузите следующий xlsx файл или вернитесь в меню', Markup.inlineKeyboard([
-    [Markup.button.callback('Вернуться в меню', 'backToMenu')]
-  ]));
-
-  // Устанавливаем состояние ожидания файла
-  ctx.session.waitingForFile = ctx.session.waitingForFile;
 }
 
 module.exports = { checkCyrillic };
