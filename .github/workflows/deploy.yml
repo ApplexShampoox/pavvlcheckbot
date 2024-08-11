@@ -24,7 +24,8 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             cd /var/www/pavvlcheckbot
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
             echo "BOT_TOKEN=${{ secrets.BOT_TOKEN }}" > /var/www/pavvlcheckbot/.env
             npm install
             pm2 restart index.js || pm2 start index.js
