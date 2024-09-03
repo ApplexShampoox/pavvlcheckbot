@@ -1,19 +1,35 @@
 const { Telegraf, Markup } = require('telegraf');
 const axios = require('axios');
 const xlsx = require('xlsx');
+const fs = require('fs'); // Для работы с файлами
 require('dotenv').config();
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const session = require('./session');
 bot.use(session.middleware());
 
+// Middleware для логирования активности
+bot.use((ctx, next) => {
+  const userInfo = `User: ${ctx.from.id} - ${ctx.from.username || 'unknown'} (${ctx.from.first_name || ''} ${ctx.from.last_name || ''})`;
+  const actionInfo = `Action: ${ctx.updateType} - ${ctx.message?.text || ctx.callbackQuery?.data || ''}`;
+  const timestamp = new Date().toISOString();
+  const logEntry = `${timestamp} - ${userInfo} - ${actionInfo}\n`;
+
+  // Сохранение в файл
+  fs.appendFile('bot_activity.log', logEntry, (err) => {
+    if (err) console.error('Ошибка записи лога:', err);
+  });
+
+  return next(); // Передача управления следующему middleware
+});
+
 // Сюда подключать новые функции (импорт из папки actions)
 const { checkIdName } = require('./actions/checkIdName');
 const { checkCyrillic } = require('./actions/checkCyrillic');
 const { checkLongContent } = require('./actions/checkLongContent');
-const { checkDouble } = require('./actions/checkDouble')
+const { checkDouble } = require('./actions/checkDouble');
 
-//При старте бота добавляем кнопку для вызова каждой функции в формате [Markup.button.callback('Надпись на кнопке','Название импортированной выше функции')]
+// При старте бота добавляем кнопку для вызова каждой функции
 bot.start((ctx) => {
   ctx.reply('Выберите действие:', Markup.inlineKeyboard([
     [Markup.button.callback('Проверка идентичности ID и названия шаблонов', 'checkIdName')],
@@ -23,7 +39,7 @@ bot.start((ctx) => {
   ]));
 });
 
-//Блок добавления действий бота после нажатия кнопки (сообщение предлагающее пользователю загрузить файл и присвоение ИД этому файлу для определения, для какой функции он был загружен)
+// Блок добавления действий бота после нажатия кнопки
 bot.action('checkIdName', (ctx) => {
   ctx.reply('Загрузите xlsx файл для проверки уникальности ID и названия.');
   ctx.session.waitingForFile = 'checkIdName';
@@ -44,7 +60,7 @@ bot.action('checkDouble', (ctx) => {
   ctx.session.waitingForFile = 'checkDouble';
 });
 
-//Добавление кнопки возврата в меню выбора функции (также при добавлении новой функции сюда нужно добавить кнопку по примеру выше)
+// Кнопка возврата в меню выбора функции
 bot.action('backToMenu', (ctx) => {
   ctx.reply('Выберите действие:', Markup.inlineKeyboard([
     [Markup.button.callback('Проверка ID и названия', 'checkIdName')],
@@ -55,6 +71,7 @@ bot.action('backToMenu', (ctx) => {
   ctx.session.waitingForFile = false; // Сброс состояния ожидания файла при возврате в меню
 });
 
+// Обработка загрузки файла
 bot.on('document', async (ctx) => {
   if (ctx.session.waitingForFile) {
     const fileId = ctx.message.document.file_id;
@@ -65,7 +82,7 @@ bot.on('document', async (ctx) => {
       const buffer = Buffer.from(response.data, 'binary');
       const workbook = xlsx.read(buffer, { type: 'buffer' });
 
-      //Определение системой какую функцию вызывать на основе ИД загруженного пользователем файла
+      // Определение системы, какую функцию вызывать на основе ID загруженного пользователем файла
       switch (ctx.session.waitingForFile) {
         case 'checkIdName':
           await checkIdName(ctx, workbook);
@@ -79,26 +96,32 @@ bot.on('document', async (ctx) => {
         case 'checkDouble':
           await checkDouble(ctx, workbook);
           break;
-        // Добавляйте новые функции здесь
         default:
           ctx.reply('Неизвестное действие. Пожалуйста, попробуйте снова.');
           break;
       }
+
+      // Логирование успешной обработки файла
+      fs.appendFile('bot_activity.log', `${new Date().toISOString()} - ${ctx.from.id} - Обработка файла успешно завершена для действия: ${ctx.session.waitingForFile}\n`, (err) => {
+        if (err) console.error('Ошибка записи лога:', err);
+      });
+
       // Сообщение после обработки файла
       ctx.reply('Загрузите следующий xlsx файл или вернитесь в меню.', Markup.inlineKeyboard([
         Markup.button.callback('Вернуться в меню', 'backToMenu')
       ]));
 
-      // Установка состояния ожидания файла для текущей функции
-      ctx.session.waitingForFile = {
-        'checkIdName': 'checkIdName',
-        'checkCyrillic': 'checkCyrillic',
-        'checkLongContent': 'checkLongContent',
-        'checkDouble': 'checkDouble'
-      }[ctx.session.waitingForFile];
+      // Сброс состояния ожидания файла
+      ctx.session.waitingForFile = false;
 
     } catch (error) {
       console.error('Ошибка при обработке файла:', error);
+
+      // Логирование ошибки
+      fs.appendFile('bot_activity.log', `${new Date().toISOString()} - ${ctx.from.id} - Ошибка при обработке файла: ${error.message}\n`, (err) => {
+        if (err) console.error('Ошибка записи лога:', err);
+      });
+
       ctx.reply('Произошла ошибка при обработке файла. Пожалуйста, попробуйте снова.');
     }
   } else {
@@ -106,4 +129,5 @@ bot.on('document', async (ctx) => {
   }
 });
 
+// Запуск бота
 bot.launch();
