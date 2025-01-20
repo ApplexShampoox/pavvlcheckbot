@@ -28,6 +28,8 @@ const { checkIdName } = require('./actions/checkIdName');
 const { checkCyrillic } = require('./actions/checkCyrillic');
 const { checkLongContent } = require('./actions/checkLongContent');
 const { checkDouble } = require('./actions/checkDouble');
+const { checkPrice } = require('./actions/checkPrice');
+
 
 // При старте бота добавляем кнопку для вызова каждой функции
 bot.start((ctx) => {
@@ -35,7 +37,9 @@ bot.start((ctx) => {
     [Markup.button.callback('Проверка идентичности ID и названия шаблонов', 'checkIdName')],
     [Markup.button.callback('Проверка наличия кириллических символов', 'checkCyrillic')],
     [Markup.button.callback('Проверка на наличие строк > 4096 символов', 'checkLongContent')],
-    [Markup.button.callback('Проверка на наличие дублей услуг', 'checkDouble')]
+    [Markup.button.callback('Проверка на наличие дублей услуг', 'checkDouble')],
+    [Markup.button.callback('Проверка прайс-листа', 'checkPrice')]
+
   ]));
 });
 
@@ -60,13 +64,20 @@ bot.action('checkDouble', (ctx) => {
   ctx.session.waitingForFile = 'checkDouble';
 });
 
+bot.action('checkPrice', (ctx) => {
+  ctx.reply('Загрузите xlsx файл для проверки прайс листа');
+  ctx.session.waitingForFile = 'checkPrice';
+});
+
+
 // Кнопка возврата в меню выбора функции
 bot.action('backToMenu', (ctx) => {
   ctx.reply('Выберите действие:', Markup.inlineKeyboard([
     [Markup.button.callback('Проверка ID и названия', 'checkIdName')],
     [Markup.button.callback('Проверка кириллических символов', 'checkCyrillic')],
     [Markup.button.callback('Проверка на строку > 4096', 'checkLongContent')],
-    [Markup.button.callback('Проверка на наличие дублей услуг', 'checkDouble')]
+    [Markup.button.callback('Проверка на наличие дублей услуг', 'checkDouble')],
+    [Markup.button.callback('Проверка прайс-листа', 'checkPrice')]
   ]));
   ctx.session.waitingForFile = false; // Сброс состояния ожидания файла при возврате в меню
 });
@@ -96,6 +107,11 @@ bot.on('document', async (ctx) => {
         case 'checkDouble':
           await checkDouble(ctx, workbook);
           break;
+        case 'checkPrice':
+          await checkPrice(ctx, workbook);
+          break;
+
+
         default:
           ctx.reply('Неизвестное действие. Пожалуйста, попробуйте снова.');
           break;
