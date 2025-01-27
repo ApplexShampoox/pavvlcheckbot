@@ -6,97 +6,109 @@ async function checkPrice(ctx, workbook) {
   const sheetNames = workbook.SheetNames;
   let result = [];
 
-  // Переменные для проверки
-  const nameToIdMap = {};
-  const idToNameMap = {};
-  const longCells = [];
-  const emptyRows = [];
-  const seenRows = new Set();
-  const duplicatesCol1 = new Set();
+  // Для «один и тот же name — разные ID»
+  // name => { codes: Set, rows: Set }
+  const nameToCodes = new Map();
 
-  sheetNames.forEach(sheetName => {
+  // Для «один и тот же code — разные name»
+  // code => { names: Set, rows: Set }
+  const codeToNames = new Map();
+
+  // Другие проверки
+  const emptyRows = []; // Пустые code / name
+  const longCells = []; // Слишком длинные code / name
+
+  sheetNames.forEach((sheetName) => {
     const sheet = workbook.Sheets[sheetName];
     const data = xlsx.utils.sheet_to_json(sheet, { header: 1 });
 
     if (data.length === 0) {
-      result.push(`Лист "${sheetName}" пуст.`);
+      // Лист пустой — можно пропустить или записать warning
       return;
     }
 
     // Проверяем заголовки
     const headers = data[0];
     if (headers[0] !== 'code' || headers[1] !== 'name') {
-      result.push(`Ошибка на листе "${sheetName}": первые два столбца должны называться "code" и "name".`);
+      result.push('Ошибка заголовков: первые два столбца должны называться "code" и "name".');
       return;
     }
 
-    const col1Seen = new Set(); // Для проверки дубликатов в первом столбце
-
+    // Обработка строк (начиная со 2-й)
     for (let i = 1; i < data.length; i++) {
-      const row = data[i];
-      const id = row[0];
+      const rowNumber = i + 1; // человекочитаемый номер (без учёта листа)
+      const row = data[i] || [];
+      const code = row[0];
       const name = row[1];
 
-      // Проверка на пустые строки
-      if (!id || !name) {
-        emptyRows.push(`Лист "${sheetName}", строка ${i + 1} пуста (code: "${id || ''}", name: "${name || ''}").`);
+      // Проверка на пустые
+      if (!code || !name) {
+        emptyRows.push(`Строка ${rowNumber} имеет пустой code или name.`);
         continue;
       }
 
-      // Проверка на длину содержимого
-      if (id.length > 512) longCells.push(`Лист "${sheetName}", строка ${i + 1}, столбец "code" (длина: ${id.length}).`);
-      if (name.length > 512) longCells.push(`Лист "${sheetName}", строка ${i + 1}, столбец "name" (длина: ${name.length}).`);
-
-      // Проверка уникальности в комбинации столбцов
-      const combinedKey = `${id}|${name}`;
-      if (seenRows.has(combinedKey)) {
-        result.push(`Услуга (code: "${id}", name: "${name}") уже существует.`);
-      } else {
-        seenRows.add(combinedKey);
+      // Проверка длины
+      if (code.length > 512) {
+        longCells.push(`Строка ${rowNumber}, столбец "code" (длина: ${code.length}).`);
+      }
+      if (name.length > 512) {
+        longCells.push(`Строка ${rowNumber}, столбец "name" (длина: ${name.length}).`);
       }
 
-      // Проверка уникальности в первом столбце
-      if (col1Seen.has(id)) {
-        duplicatesCol1.add(`Услуга "code" (ID: "${id}") уже существует.`);
-      } else {
-        col1Seen.add(id);
+      // --- Сохраняем «name => (codes, rows)» ---
+      if (!nameToCodes.has(name)) {
+        nameToCodes.set(name, { codes: new Set(), rows: new Set() });
       }
+      nameToCodes.get(name).codes.add(code);
+      nameToCodes.get(name).rows.add(rowNumber);
 
-      // Проверка связей между "code" и "name"
-      if (nameToIdMap[name] && nameToIdMap[name] !== id) {
-        result.push(`Услуга "${name}" связана с несколькими ID: ${nameToIdMap[name]}, ${id}.`);
-      } else {
-        nameToIdMap[name] = id;
+      // --- Сохраняем «code => (names, rows)» ---
+      if (!codeToNames.has(code)) {
+        codeToNames.set(code, { names: new Set(), rows: new Set() });
       }
-
-      if (idToNameMap[id] && idToNameMap[id] !== name) {
-        result.push(`Услуга с ID "${id}" связана с несколькими названиями: ${idToNameMap[id]}, ${name}.`);
-      } else {
-        idToNameMap[id] = name;
-      }
+      codeToNames.get(code).names.add(name);
+      codeToNames.get(code).rows.add(rowNumber);
     }
   });
 
+  // 1) Проверка: один и тот же name с разными code
+  for (const [name, info] of nameToCodes) {
+    if (info.codes.size > 1) {
+      // Собираем в одну строку
+      const codesStr = Array.from(info.codes).join(', ');
+      const rowsStr = Array.from(info.rows).join(', ');
+      result.push(`Услуга "${name}" встречается больше одного раза (ID ${codesStr}) (${rowsStr})`);
+    }
+  }
+
+  // 2) Проверка: один и тот же code с разными name
+  for (const [code, info] of codeToNames) {
+    if (info.names.size > 1) {
+      const namesStr = Array.from(info.names).join(', ');
+      const rowsStr = Array.from(info.rows).join(', ');
+      result.push(`Код "${code}" встречается больше одного раза (NAME ${namesStr}) (${rowsStr})`);
+    }
+  }
+
+  // Добавляем про пустые строки
   if (emptyRows.length > 0) {
     result.push('Пустые строки:\n' + emptyRows.join('\n'));
   }
+  // И про слишком длинные
   if (longCells.length > 0) {
     result.push('Слишком длинные строки:\n' + longCells.join('\n'));
   }
-  if (duplicatesCol1.size > 0) {
-    result.push('Дубликаты в столбце "code":\n' + Array.from(duplicatesCol1).join('\n'));
-  }
 
+  // Если ошибок нет
   if (result.length === 0) {
     result.push('Ошибок не обнаружено.');
   }
 
-  const filePath = path.join(__dirname, '..', 'CheckResults.txt');
+  // Запись в файл и отправка
+  const filePath = path.join(__dirname, '..', 'Ошибки валидации.txt');
   fs.writeFileSync(filePath, result.join('\n'));
-
   await ctx.replyWithDocument({ source: filePath });
   fs.unlinkSync(filePath);
 }
-
 
 module.exports = { checkPrice };

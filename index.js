@@ -127,8 +127,8 @@ bot.on('document', async (ctx) => {
         Markup.button.callback('Вернуться в меню', 'backToMenu')
       ]));
 
-      // Сброс состояния ожидания файла
-      ctx.session.waitingForFile = false;
+      // // Сброс состояния ожидания файла
+      // ctx.session.waitingForFile = false;
 
     } catch (error) {
       console.error('Ошибка при обработке файла:', error);
